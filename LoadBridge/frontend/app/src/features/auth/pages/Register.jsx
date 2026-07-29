@@ -5,6 +5,7 @@ import { Link, useNavigate } from 'react-router-dom';
 
 import Button from '../../../shared/components/Button';
 import Input from '../../../shared/components/Input';
+import { useToast } from '../../../shared/components/Toast';
 import { registerUser, verifyPan } from '../slices/authSlice';
 import { sendOtpApi, verifyOtpApi } from '../services/authService';
 
@@ -97,7 +98,7 @@ export default function Register() {
           </p>
         </div>
 
-        {/* Step 1: PAN Verification */}
+        {/* Step 1: PAN Verification  */}
         <div className="mb-8 rounded-2xl border border-slate-200 bg-slate-50 p-5">
           <h2 className="mb-4 font-medium text-slate-900">
             Step 1 · PAN Verification
@@ -109,7 +110,7 @@ export default function Register() {
           />
         </div>
 
-        {/* Step 2: 4-Digit OTP Verification */}
+        {/* Step 2: 4-Digit OTP Verification Added */}
         <div className="mb-8 rounded-2xl border border-slate-200 bg-slate-50 p-5">
           <h2 className="mb-4 font-medium text-slate-900">
             Step 2 · 4-Digit OTP Verification
