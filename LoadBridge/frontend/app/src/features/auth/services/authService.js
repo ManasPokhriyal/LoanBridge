@@ -19,3 +19,13 @@ export const meApi = async () => {
   const response = await apiClient.get('/auth/me');
   return response.data;
 };
+
+export const sendOtpApi = async (email) => {
+  const response = await apiClient.post('/auth/send-otp', { email });
+  return response.data;
+};
+
+export const verifyOtpApi = async (email, otp) => {
+  const response = await apiClient.post('/auth/verify-otp', { email, otp });
+  return response.data;
+};
