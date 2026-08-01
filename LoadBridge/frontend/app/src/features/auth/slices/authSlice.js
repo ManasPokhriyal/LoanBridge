@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import { loginApi, registerApi, verifyPanApi, meApi } from '../services/authService';
+import { loginApi, registerInitApi, registerConfirmApi, meApi } from '../services/authService';
 
+// 1. Thunk for User Login
 export const loginUser = createAsyncThunk(
   'auth/loginUser',
   async (credentials, { rejectWithValue }) => {
@@ -13,11 +14,12 @@ export const loginUser = createAsyncThunk(
   }
 );
 
-export const registerUser = createAsyncThunk(
-  'auth/registerUser',
+// 2. Thunk for Registration Step 1 (PAN Check & Send OTP via Backend)
+export const registerInit = createAsyncThunk(
+  'auth/registerInit',
   async (payload, { rejectWithValue }) => {
     try {
-      const response = await registerApi(payload);
+      const response = await registerInitApi(payload);
       return response;
     } catch (error) {
       return rejectWithValue(error.message);
@@ -25,11 +27,12 @@ export const registerUser = createAsyncThunk(
   }
 );
 
-export const verifyPan = createAsyncThunk(
-  'auth/verifyPan',
-  async (pan, { rejectWithValue }) => {
+// 3. Thunk for Registration Step 2 (Verify OTP & Complete User Registration)
+export const registerConfirm = createAsyncThunk(
+  'auth/registerConfirm',
+  async (payload, { rejectWithValue }) => {
     try {
-      const response = await verifyPanApi(pan);
+      const response = await registerConfirmApi(payload);
       return response;
     } catch (error) {
       return rejectWithValue(error.message);
@@ -37,6 +40,7 @@ export const verifyPan = createAsyncThunk(
   }
 );
 
+// 4. Thunk to restore active user session from token
 export const restoreSession = createAsyncThunk(
   'auth/restoreSession',
   async (_, { rejectWithValue }) => {
@@ -49,6 +53,7 @@ export const restoreSession = createAsyncThunk(
   }
 );
 
+// Load saved user data from sessionStorage if available
 const storedUser = JSON.parse(sessionStorage.getItem('loanbridge_user') || 'null');
 
 const initialState = {
@@ -56,11 +61,12 @@ const initialState = {
   token: sessionStorage.getItem('loanbridge_token'),
   loading: false,
   error: null,
-  panResult: null,
-  panLoading: false,
+  otpModalOpen: false, // Controls whether OTP popup is open
+  registerSuccess: false,
   restored: false,
 };
 
+// Helper function to save JWT token and user info in browser session storage
 const saveAuthData = (state, payload) => {
   state.token = payload.token;
   state.user = payload.user;
@@ -72,22 +78,27 @@ const authSlice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
+    // Logout action to clear stored session data
     logout(state) {
       state.user = null;
       state.token = null;
-      state.panResult = null;
+      state.otpModalOpen = false;
+      state.registerSuccess = false;
       sessionStorage.removeItem('loanbridge_token');
       sessionStorage.removeItem('loanbridge_user');
     },
+    // Clear error message
     clearAuthError(state) {
       state.error = null;
     },
-    clearPanResult(state) {
-      state.panResult = null;
+    // Close OTP Modal
+    closeOtpModal(state) {
+      state.otpModalOpen = false;
     },
   },
   extraReducers: (builder) => {
     builder
+      // Login state handling
       .addCase(loginUser.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -100,31 +111,35 @@ const authSlice = createSlice({
         state.loading = false;
         state.error = action.payload;
       })
-      .addCase(registerUser.pending, (state) => {
+      // Registration Step 1 (Init)
+      .addCase(registerInit.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
-      .addCase(registerUser.fulfilled, (state, action) => {
+      .addCase(registerInit.fulfilled, (state) => {
         state.loading = false;
+        state.otpModalOpen = true; // Open OTP modal popup
+      })
+      .addCase(registerInit.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      // Registration Step 2 (Confirm OTP)
+      .addCase(registerConfirm.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(registerConfirm.fulfilled, (state, action) => {
+        state.loading = false;
+        state.otpModalOpen = false;
+        state.registerSuccess = true;
         saveAuthData(state, action.payload);
       })
-      .addCase(registerUser.rejected, (state, action) => {
+      .addCase(registerConfirm.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       })
-      .addCase(verifyPan.pending, (state) => {
-        state.panLoading = true;
-        state.error = null;
-        state.panResult = null;
-      })
-      .addCase(verifyPan.fulfilled, (state, action) => {
-        state.panLoading = false;
-        state.panResult = action.payload;
-      })
-      .addCase(verifyPan.rejected, (state, action) => {
-        state.panLoading = false;
-        state.error = action.payload;
-      })
+      // Session Restore
       .addCase(restoreSession.pending, (state) => {
         state.restored = false;
       })
@@ -143,5 +158,6 @@ const authSlice = createSlice({
   },
 });
 
-export const { logout, clearAuthError, clearPanResult } = authSlice.actions;
+export const { logout, clearAuthError, closeOtpModal } = authSlice.actions;
 export default authSlice.reducer;
+
