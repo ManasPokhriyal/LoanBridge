@@ -1,165 +1,156 @@
 import { useEffect, useRef, useState } from 'react';
-import { FileUp, UserPlus, BadgeCheck, SearchCheck, KeyRound, ShieldCheck } from 'lucide-react';
+import { FileUp, UserPlus, X, KeyRound, CheckCircle2 } from 'lucide-react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link, useNavigate } from 'react-router-dom';
 
 import Button from '../../../shared/components/Button';
 import Input from '../../../shared/components/Input';
 import { useToast } from '../../../shared/components/Toast';
-import { registerUser, verifyPan } from '../slices/authSlice';
-import { sendOtpApi, verifyOtpApi } from '../services/authService';
+import { registerInit, registerConfirm, closeOtpModal, clearAuthError } from '../slices/authSlice';
 
-const REGISTER_FIELDS = [
-  { name: 'name', label: 'Full name', type: 'text' },
-  { name: 'email', label: 'Email', type: 'email' },
-  { name: 'password', label: 'Password', type: 'password' },
-  { name: 'phone', label: 'Phone number', type: 'tel' },
-  { name: 'aadhaar', label: 'Aadhaar number', type: 'text' },
-  { name: 'address', label: 'Address', type: 'text' },
-  { name: 'annualIncome', label: 'Annual income', type: 'number' },
+// List of standard registration form fields
+const FORM_FIELDS = [
+  { name: 'name', label: 'Full name', type: 'text', placeholder: 'John Doe' },
+  { name: 'email', label: 'Email address', type: 'email', placeholder: 'john@example.com' },
+  { name: 'password', label: 'Password', type: 'password', placeholder: '••••••••' },
+  { name: 'phone', label: 'Phone number', type: 'tel', placeholder: '9876543210' },
+  { name: 'pan', label: 'PAN card number', type: 'text', placeholder: 'ABCDE1234F' },
+  { name: 'address', label: 'Address', type: 'text', placeholder: '123 Main Street, City' },
+  { name: 'annualIncome', label: 'Annual income (₹)', type: 'number', placeholder: '500000' },
 ];
 
+// Initial empty form state
 const INITIAL_FORM = {
   name: '',
   email: '',
   password: '',
   phone: '',
   pan: '',
-  aadhaar: '',
   address: '',
-  employmentType: 'SALARIED',
   annualIncome: '',
+  employmentType: 'SALARIED',
   documentName: '',
 };
 
 export default function Register() {
   const [form, setForm] = useState(INITIAL_FORM);
-  const [otpVerified, setOtpVerified] = useState(false);
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const { user, loading, error, panResult } = useSelector((state) => state.auth);
+  // Get auth state from Redux store
+  const { user, loading, error, otpModalOpen } = useSelector((state) => state.auth);
 
+  // If user registration is complete and logged in, redirect to dashboard
   useEffect(() => {
-    if (!user) return;
-    toast('Registration completed successfully.', 'success');
-    navigate('/dashboard', { replace: true });
+    if (user) {
+      toast('Registration completed successfully! Welcome to LoanBridge.', 'success');
+      navigate('/dashboard', { replace: true });
+    }
   }, [user, navigate, toast]);
 
+  // Show toast notification if error occurs
+  useEffect(() => {
+    if (error) {
+      toast(error, 'error');
+    }
+  }, [error, toast]);
+
+  // Helper method to update form input fields
   const updateField = (field, value) => {
     setForm((previousForm) => ({ ...previousForm, [field]: value }));
   };
 
-  const handleSubmit = (event) => {
+  // Step 1: Submit Form to Backend (Triggers PAN Verification & OTP Dispatch)
+  const handleSubmitForm = (event) => {
     event.preventDefault();
+    dispatch(clearAuthError());
 
-    if (!panResult?.verified) {
-      toast('Verify PAN before registration.', 'error');
-      return;
-    }
-
-    if (!otpVerified) {
-      toast('Verify the 4-digit OTP before submitting.', 'error');
+    // Validate PAN format (5 uppercase letters, 4 digits, 1 uppercase letter)
+    const panClean = form.pan.toUpperCase().trim();
+    if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(panClean)) {
+      toast('Please enter a valid 10-character PAN number (e.g. ABCDE1234F).', 'error');
       return;
     }
 
     if (!form.documentName) {
-      toast('Upload one supporting document.', 'error');
+      toast('Please upload a supporting document.', 'error');
       return;
     }
 
-    dispatch(
-      registerUser({
-        ...form,
-        creditScore: panResult.creditScore,
-        name: form.name || panResult.name,
-      })
-    );
+    // Call backend endpoint /api/auth/register-init (Port 8080)
+    dispatch(registerInit({ ...form, pan: panClean }));
   };
 
   return (
     <section className="page-shell py-12">
       <form
-        onSubmit={handleSubmit}
+        onSubmit={handleSubmitForm}
         className="mx-auto max-w-4xl rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl sm:p-10"
       >
+        {/* Header Section */}
         <div className="mb-8">
           <div className="inline-flex rounded-2xl bg-indigo-500/10 p-3 text-indigo-600">
-            <UserPlus />
+            <UserPlus size={28} />
           </div>
 
-          <h1 className="mt-4 text-3xl font-semibold">
-            Create your LoanBridge account
+          <h1 className="mt-4 text-3xl font-semibold text-slate-900">
+            Create your LoanBridge Account
           </h1>
 
           <p className="mt-2 text-slate-500">
-            Verify PAN, verify 4-digit OTP, enter personal details, and upload document.
+            Fill in your registration details below. Clicking <strong>Register</strong> will verify your PAN card and send a 4-digit OTP to your email.
           </p>
         </div>
 
-        {/* Step 1: PAN Verification  */}
-        <div className="mb-8 rounded-2xl border border-slate-200 bg-slate-50 p-5">
-          <h2 className="mb-4 font-medium text-slate-900">
-            Step 1 · PAN Verification
-          </h2>
-
-          <PanVerification
-            pan={form.pan}
-            setPan={(value) => updateField('pan', value)}
-          />
-        </div>
-
-        {/* Step 2: 4-Digit OTP Verification Added */}
-        <div className="mb-8 rounded-2xl border border-slate-200 bg-slate-50 p-5">
-          <h2 className="mb-4 font-medium text-slate-900">
-            Step 2 · 4-Digit OTP Verification
-          </h2>
-
-          <OtpVerification
-            email={form.email}
-            phone={form.phone}
-            otpVerified={otpVerified}
-            setOtpVerified={setOtpVerified}
-          />
-        </div>
-
-        {/* Step 3: Registration Details */}
+        {/* Form Inputs Grid */}
         <div className="grid gap-5 sm:grid-cols-2">
-          {REGISTER_FIELDS.map((field) => (
+          {FORM_FIELDS.map((field) => (
             <Input
               key={field.name}
               label={field.label}
               type={field.type}
+              placeholder={field.placeholder}
               value={form[field.name]}
-              onChange={(event) => updateField(field.name, event.target.value)}
+              onChange={(event) =>
+                updateField(
+                  field.name,
+                  field.name === 'pan' ? event.target.value.toUpperCase() : event.target.value
+                )
+              }
+              maxLength={field.name === 'pan' ? 10 : undefined}
               required
             />
           ))}
 
+          {/* Employment Type Dropdown */}
           <label className="block space-y-2 text-sm">
             <span className="font-medium text-slate-700">
-              Employment type
+              Employment Type
             </span>
             <select
               value={form.employmentType}
               onChange={(event) => updateField('employmentType', event.target.value)}
-              className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-3"
+              className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
             >
-              <option>SALARIED</option>
-              <option>SELF_EMPLOYED</option>
-              <option>BUSINESS</option>
-              <option>STUDENT</option>
+              <option value="SALARIED">SALARIED</option>
+              <option value="SELF_EMPLOYED">SELF_EMPLOYED</option>
+              <option value="BUSINESS">BUSINESS</option>
+              <option value="STUDENT">STUDENT</option>
             </select>
           </label>
 
-          <label className="block space-y-2 text-sm">
+          {/* Supporting Document Upload */}
+          <label className="block space-y-2 text-sm sm:col-span-2">
             <span className="font-medium text-slate-700">
-              Supporting document (any type)
+              Supporting Document (Salary Slip / ID Proof)
             </span>
-            <span className="flex min-h-[48px] cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-slate-500 hover:border-indigo-500">
-              <FileUp size={18} />
-              {form.documentName || 'Choose file'}
+            <span className="flex min-h-[52px] cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-slate-600 hover:border-indigo-500 hover:bg-indigo-50/50">
+              <FileUp size={20} className="text-indigo-600" />
+              <span className="flex-1 font-medium">
+                {form.documentName ? form.documentName : 'Click to select supporting document'}
+              </span>
+              {form.documentName && <CheckCircle2 size={18} className="text-emerald-600" />}
               <input
                 className="hidden"
                 type="file"
@@ -169,93 +160,56 @@ export default function Register() {
           </label>
         </div>
 
+        {/* Form Error Alert */}
         {error && (
-          <p className="mt-5 rounded-xl bg-rose-500/10 p-3 text-sm text-rose-700">
+          <div className="mt-6 rounded-xl bg-rose-500/10 p-4 text-sm text-rose-700 border border-rose-200">
             {error}
-          </p>
+          </div>
         )}
 
+        {/* Submit Button */}
         <Button
           type="submit"
           loading={loading}
-          className="mt-8 w-full sm:w-auto"
+          className="mt-8 w-full py-3.5 text-base sm:w-auto"
         >
-          Create account
+          Register & Send OTP
         </Button>
 
-        <p className="mt-5 text-sm text-slate-500">
+        {/* Login Link */}
+        <p className="mt-6 text-sm text-slate-500">
           Already registered?{' '}
-          <Link to="/login" className="text-indigo-600">
-            Sign in
+          <Link to="/login" className="font-medium text-indigo-600 hover:underline">
+            Sign in here
           </Link>
         </p>
       </form>
+
+      {/* Step 2: OTP Verification Modal Popup */}
+      {otpModalOpen && (
+        <OtpModal
+          email={form.email}
+          form={form}
+          loading={loading}
+        />
+      )}
     </section>
   );
 }
 
-function PanVerification({ pan, setPan }) {
-  const dispatch = useDispatch();
-  const { panResult, panLoading } = useSelector((state) => state.auth);
-
-  const handleVerifyPan = () => {
-    dispatch(verifyPan(pan));
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex gap-3">
-        <div className="flex-1">
-          <Input
-            label="PAN number"
-            value={pan}
-            onChange={(event) => setPan(event.target.value.toUpperCase())}
-            placeholder="ABCDE1234F"
-            maxLength={10}
-          />
-        </div>
-        <Button className="mt-7" onClick={handleVerifyPan} loading={panLoading}>
-          <SearchCheck size={17} />
-          Verify
-        </Button>
-      </div>
-      {panResult?.verified && (
-        <div className="flex items-start gap-3 rounded-xl border border-emerald-400/20 bg-emerald-500/10 p-4">
-          <BadgeCheck className="mt-0.5 text-emerald-600" />
-          <div>
-            <p className="font-medium text-emerald-700">
-              PAN verified successfully
-            </p>
-            <p className="mt-1 text-sm text-emerald-700">
-              {panResult.name} · Credit score {panResult.creditScore}
-            </p>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function OtpVerification({ email, phone, otpVerified, setOtpVerified }) {
+// Modal Component for 4-Digit OTP Verification
+function OtpModal({ email, form, loading }) {
   const [digits, setDigits] = useState(['', '', '', '']);
-  const [otpSent, setOtpSent] = useState(false);
-  const [loading, setLoading] = useState(false);
   const inputRefs = [useRef(null), useRef(null), useRef(null), useRef(null)];
+  const dispatch = useDispatch();
   const { toast } = useToast();
 
-  const handleSendOtp = async () => {
-    setLoading(true);
-    try {
-      await sendOtpApi(email);
-      setOtpSent(true);
-      toast('OTP sent successfully to your email address.', 'info');
-    } catch {
-      setOtpSent(true);
-      toast('OTP sent successfully to your email address.', 'info');
-    }
-    setLoading(false);
-  };
+  // Focus first digit box when modal opens
+  useEffect(() => {
+    inputRefs[0].current?.focus();
+  }, []);
 
+  // Handle digit input & auto-focus to next box
   const handleDigitChange = (index, value) => {
     if (!/^\d*$/.test(value)) return;
 
@@ -263,68 +217,73 @@ function OtpVerification({ email, phone, otpVerified, setOtpVerified }) {
     newDigits[index] = value.slice(-1);
     setDigits(newDigits);
 
-    // Auto-focus next box
     if (value && index < 3) {
       inputRefs[index + 1].current?.focus();
     }
   };
 
+  // Handle backspace key to move focus to previous box
   const handleKeyDown = (index, event) => {
     if (event.key === 'Backspace' && !digits[index] && index > 0) {
       inputRefs[index - 1].current?.focus();
     }
   };
 
-  const handleVerifyOtp = async () => {
+  // Submit OTP to complete registration
+  const handleVerifyOtp = (event) => {
+    event.preventDefault();
     const enteredOtp = digits.join('');
     if (enteredOtp.length < 4) {
-      toast('Enter full 4-digit OTP.', 'error');
+      toast('Please enter the full 4-digit OTP.', 'error');
       return;
     }
 
-    setLoading(true);
-    try {
-      await verifyOtpApi(email, enteredOtp);
-      setOtpVerified(true);
-      toast('OTP verified successfully!', 'success');
-    } catch {
-      setOtpVerified(true);
-      toast('OTP verified successfully!', 'success');
-    }
-    setLoading(false);
+    // Call backend endpoint /api/auth/register-confirm (Port 8080)
+    dispatch(
+      registerConfirm({
+        ...form,
+        email: email,
+        otp: enteredOtp,
+      })
+    );
   };
 
   return (
-    <div className="space-y-4">
-      {!otpSent ? (
-        <div className="flex items-center justify-between gap-4">
-          <p className="text-sm text-slate-500">
-            Click to send 4-digit OTP code to your email address.
-          </p>
-          <Button variant="secondary" onClick={handleSendOtp}>
-            <KeyRound size={17} />
-            Send 4-Digit OTP
-          </Button>
-        </div>
-      ) : otpVerified ? (
-        <div className="flex items-start gap-3 rounded-xl border border-emerald-400/20 bg-emerald-500/10 p-4">
-          <ShieldCheck className="mt-0.5 text-emerald-600" />
-          <div>
-            <p className="font-medium text-emerald-700">
-              OTP Verified Successfully
-            </p>
-            <p className="mt-1 text-sm text-emerald-700">
-              Email address verification complete.
-            </p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl sm:p-8 animate-in fade-in zoom-in duration-200">
+        
+        {/* Modal Header */}
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <div className="rounded-2xl bg-indigo-500/10 p-3 text-indigo-600">
+              <KeyRound size={24} />
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900">
+                Email OTP Verification
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                PAN Verified successfully!
+              </p>
+            </div>
           </div>
+
+          <button
+            onClick={() => dispatch(closeOtpModal())}
+            className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+          >
+            <X size={20} />
+          </button>
         </div>
-      ) : (
-        <div className="space-y-4">
-          <p className="text-sm text-slate-600 font-medium">
-            Enter 4-Digit OTP sent to your email address
+
+        {/* Modal Content */}
+        <form onSubmit={handleVerifyOtp} className="mt-6 space-y-6">
+          <p className="text-sm text-slate-600">
+            A 4-digit OTP has been sent to <strong className="text-slate-900">{email}</strong>. Please enter it below to complete registration:
           </p>
 
-          <div className="flex items-center gap-3">
+          {/* 4 Digit Input Boxes */}
+          <div className="flex justify-center gap-3">
             {digits.map((digit, idx) => (
               <input
                 key={idx}
@@ -334,20 +293,32 @@ function OtpVerification({ email, phone, otpVerified, setOtpVerified }) {
                 value={digit}
                 onChange={(e) => handleDigitChange(idx, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(idx, e)}
-                className="h-12 w-12 rounded-xl border border-slate-300 bg-white text-center text-xl font-bold text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                className="h-14 w-14 rounded-2xl border border-slate-300 bg-slate-50 text-center text-2xl font-bold text-slate-900 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/20"
               />
             ))}
+          </div>
 
-            <Button className="ml-2" onClick={handleVerifyOtp}>
-              Verify OTP
+          {/* Actions */}
+          <div className="space-y-3">
+            <Button
+              type="submit"
+              loading={loading}
+              className="w-full py-3.5 text-base"
+            >
+              Verify OTP & Complete Registration
             </Button>
 
-            <Button variant="ghost" className="text-xs" onClick={handleSendOtp}>
-              Resend
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full text-xs text-slate-500"
+              onClick={() => dispatch(registerInit(form))}
+            >
+              Didn't receive code? Resend OTP
             </Button>
           </div>
-        </div>
-      )}
+        </form>
+      </div>
     </div>
   );
 }
