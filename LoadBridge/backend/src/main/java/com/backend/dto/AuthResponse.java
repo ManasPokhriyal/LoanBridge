@@ -9,10 +9,7 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class PanVerifyResponse {
-    private boolean verified;
-    private String name;
-    private Integer creditScore;
-    private String pan;
-    private String message;
+public class AuthResponse {
+    private String token;
+    private UserDTO user;
 }
